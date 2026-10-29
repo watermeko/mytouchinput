@@ -189,6 +189,20 @@ Verified on the device: tapping `a` and `h` typed `ah` into a search field;
 tapping 中/英 moved fcitx5 to pinyin; tapping `n u h a o` brought up the
 candidate strip (`1. 怒号 2. 怒 ...`).
 
+## Showing and hiding
+
+The keyboard does not react to focus.  It starts collapsed, showing only a
+56x56 button at the bottom right with a keyboard glyph; tapping it expands the
+keys, tapping it again collapses them.
+
+Because the surface is always mapped, "collapsed" means: the rest of the surface
+is painted fully transparent and the input region is narrowed to the button
+alone, so taps outside it fall through to whatever is underneath.  That is why
+the toggle works without the window ever taking focus.
+
+The fcitx5 backend is still registered so fcitx5 recognises the keyboard, but
+`ProcessVisibilityEvent` is ignored -- fcitx5 never called it anyway.
+
 ## Known rough edges
 
 * Glyphs: the embedded Go font has no ⇧ ⌫ ⏎, which rendered as empty boxes.

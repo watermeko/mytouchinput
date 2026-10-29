@@ -28,9 +28,10 @@ var (
 	colPressed = color.NRGBA{0x6a, 0x6a, 0x74, 0xff}
 )
 
-// Run serves the keyboard until the process exits.  visibility tells it whether
-// a text field wants input.
-func (u *UI) Run(visibility <-chan bool) (err error) {
+// Run serves the keyboard until the process exits.  It starts collapsed: only
+// the small toggle button is drawn, the rest of the surface is transparent and
+// click-through, and tapping the button shows or hides the keys.
+func (u *UI) Run() (err error) {
 	defer func() {
 		if err != nil {
 			_ = u.ctx.Dispatch()
@@ -43,45 +44,18 @@ func (u *UI) Run(visibility <-chan bool) (err error) {
 	}
 
 	for {
-		drained := false
-	drain:
-		for {
-			select {
-			case v := <-visibility:
-				if v != u.visible {
-					u.visible = v
-					u.dirty = true
-				}
-				drained = true
-				continue
-			default:
-				break drain
-			}
-		}
-		_ = drained
-
 		if u.dirty {
-			if os.Getenv("MYTOUCHINPUT_NO_DRAW") != "1" {
-				if err := u.paint(); err != nil {
-					return err
-				}
+			if err := u.paint(); err != nil {
+				return err
 			}
 			u.dirty = false
 		}
 
-		if !u.visible {
-			// Nothing to do; sleeping also lets the visibility channel be
-			// checked again without blocking on the compositor.
-			time.Sleep(40 * time.Millisecond)
-			continue
-		}
-
-		// Keep a frame callback pending so Dispatch returns and the loop can
-		// notice visibility changes.
 		// Poll instead of chaining wl_surface.frame callbacks: the callback
 		// proxies are never destroyed, and re-requesting one every iteration
-		// killed the connection after a handful of frames.
-		time.Sleep(25 * time.Millisecond)
+		// killed the connection after a handful of frames.  Polling also keeps
+		// events flowing while collapsed, so the toggle button stays tappable.
+		time.Sleep(20 * time.Millisecond)
 		if err := u.roundtrip(); err != nil {
 			return fmt.Errorf("polling the compositor: %w", err)
 		}
@@ -219,11 +193,15 @@ func (u *UI) createBuffers() error {
 		u.pixels = append(u.pixels, pixelTarget{data: data, fd: fd})
 	}
 
-	empty, err := u.compositor.CreateRegion()
+	button, err := u.compositor.CreateRegion()
 	if err != nil {
 		return err
 	}
-	u.emptyRegion = empty
+	tr := u.toggleRect()
+	if err := button.Add(int32(tr.x), int32(tr.y), int32(tr.w), int32(tr.h)); err != nil {
+		return err
+	}
+	u.buttonRegion = button
 
 	full, err := u.compositor.CreateRegion()
 	if err != nil {
@@ -258,11 +236,13 @@ func (u *UI) paint() (err error) {
 	img := image.NewRGBA(image.Rect(0, 0, u.width, u.height))
 	u.boxes = u.layout()
 
-	if u.visible {
+	u.button = u.toggleRect()
+	if u.expanded {
 		u.drawKeyboard(img)
 	} else {
 		draw.Draw(img, img.Bounds(), image.Transparent, image.Point{}, draw.Src)
 	}
+	u.drawToggle(img)
 
 	// wl_shm ARGB8888 is little-endian 0xAARRGGBB, image.RGBA is R,G,B,A.
 	dst := u.pixels[idx].data
@@ -277,17 +257,17 @@ func (u *UI) paint() (err error) {
 		}
 	}
 
-	logf("paint: visible=%v boxes=%d", u.visible, len(u.boxes))
+	logf("paint: expanded=%v boxes=%d", u.expanded, len(u.boxes))
 	if os.Getenv("MYTOUCHINPUT_NO_REGION") != "1" {
-	if u.visible {
-		if err := u.surface.SetInputRegion(u.inputRegion); err != nil {
+		// Collapsed: only the toggle button takes input, so taps fall through
+		// to whatever is underneath.
+		region := u.inputRegion
+		if !u.expanded {
+			region = u.buttonRegion
+		}
+		if err := u.surface.SetInputRegion(region); err != nil {
 			return fmt.Errorf("set_input_region: %w", err)
 		}
-	} else {
-		if err := u.surface.SetInputRegion(u.emptyRegion); err != nil {
-			return fmt.Errorf("set_input_region: %w", err)
-		}
-	}
 	}
 	logf("attach buffer id=%d", u.buffers[idx].ID())
 	if os.Getenv("MYTOUCHINPUT_NO_ATTACH") != "1" {
@@ -304,6 +284,30 @@ func (u *UI) paint() (err error) {
 		return nil
 	}
 	return u.surface.Commit()
+}
+
+// drawToggle paints the show/hide button.
+func (u *UI) drawToggle(img *image.RGBA) {
+	b := u.toggleRect()
+	bg := colMod
+	if u.expanded {
+		bg = colActive
+	}
+	u.roundedRect(img, b.x, b.y, b.w, b.h, 12, bg)
+	// A small keyboard glyph: three rows of short bars.
+	glyph := color.NRGBA{0xff, 0xff, 0xff, 0xff}
+	bx, by := b.x+10, b.y+16
+	for row := 0; row < 3; row++ {
+		for col := 0; col < 4; col++ {
+			x := bx + col*9
+			y := by + row*8
+			w := 6
+			if row == 2 && col == 2 {
+				w = 15
+			}
+			draw.Draw(img, image.Rect(x, y, x+w, y+4), image.NewUniform(glyph), image.Point{}, draw.Src)
+		}
+	}
 }
 
 func (u *UI) drawKeyboard(img *image.RGBA) {
@@ -414,7 +418,15 @@ func round(v float64) float64 {
 
 // press handles a tap at surface coordinates.
 func (u *UI) press(x, y float64) {
-	if !u.visible {
+	b := u.button
+	if x >= float64(b.x) && x <= float64(b.x+b.w) &&
+		y >= float64(b.y) && y <= float64(b.y+b.h) {
+		u.expanded = !u.expanded
+		u.dirty = true
+		logf("toggle -> expanded=%v", u.expanded)
+		return
+	}
+	if !u.expanded {
 		return
 	}
 	for _, b := range u.boxes {

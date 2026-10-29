@@ -76,9 +76,11 @@ type UI struct {
 	configured    bool
 	configureSerial uint32
 	inputRegion   *client.Region
-	emptyRegion   *client.Region
+	buttonRegion  *client.Region
 
-	visible bool
+	// expanded is false while only the toggle button is shown.
+	expanded bool
+	showToggle bool
 	dirty   bool
 	shift   bool
 	symbols bool
@@ -87,6 +89,7 @@ type UI struct {
 	lastX   float64
 	lastY   float64
 	boxes   []keyBox
+	button  keyBox
 	pressed int
 	symbolsIME bool
 
@@ -242,6 +245,19 @@ func newFace(size float64) (font.Face, error) {
 		DPI:     72,
 		Hinting: font.HintingFull,
 	})
+}
+
+// toggleRect is the small button at the bottom right that shows and hides the
+// keyboard.  It sits in the empty strip below the last key row, so it never
+// covers a key.
+func (u *UI) toggleRect() keyBox {
+	const size = 56
+	return keyBox{
+		x: u.width - size - 6,
+		y: u.height - size - 6,
+		w: size,
+		h: size,
+	}
 }
 
 // layout computes the key rectangles for the current layer.

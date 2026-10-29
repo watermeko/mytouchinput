@@ -27,41 +27,22 @@ func main() {
 		appID  = flag.String("app-id", "org.liuqin.TouchInput", "Wayland app_id for the KWin rule")
 		socket = flag.String("ydotool-socket", "/run/ydotoold.socket", "ydotoold socket")
 		dryRun = flag.Bool("dry-run", false, "log key events instead of injecting them")
-		always = flag.Bool("always-visible", false, "ignore fcitx5 and stay visible (debugging)")
-		poll   = flag.Duration("focus-poll", 300*time.Millisecond, "how often to ask fcitx5 whether a text field has focus")
 	)
 	flag.Parse()
 
-	visibility := make(chan bool, 8)
-	if *always {
-		visibility <- true
-	} else {
-		// fcitx5 knows about this keyboard but never calls
-		// ProcessVisibilityEvent on focus, so poll its idea of the focused
-		// input context instead: fcitx5-remote -n prints the engine name while
-		// a text field has focus and nothing otherwise.
-		go func() {
-			last := false
-			for range time.Tick(*poll) {
-				now := currentIME() != ""
-				if now != last {
-					last = now
-					visibility <- now
-				}
-			}
-		}()
-		conn, err := fcitx.Connect()
-		if err != nil {
-			log.Fatalf("cannot reach the session bus: %v", err)
-		}
+	// The keyboard no longer shows itself: a small button in the bottom bar
+	// toggles it.  The fcitx5 backend is still registered so fcitx5 recognises
+	// the keyboard, but its visibility events are not used.
+	if conn, err := fcitx.Connect(); err == nil {
 		backend := &fcitx.Backend{
-			Visibility: visibility,
+			Visibility: make(chan bool, 1),
 			Keys:       make(chan fcitx.KeyEvent, 16),
 		}
 		if err := fcitx.Serve(conn, backend); err != nil {
-			log.Fatalf("cannot become fcitx5's virtual keyboard: %v", err)
+			log.Printf("not registering with fcitx5: %v", err)
+		} else {
+			log.Printf("registered as %s", fcitx.BusName)
 		}
-		log.Printf("registered as %s", fcitx.BusName)
 	}
 
 	inj := &inject.Injector{Socket: *socket, DryRun: *dryRun}
@@ -88,7 +69,7 @@ func main() {
 		log.Fatalf("cannot create the keyboard window: %v", err)
 	}
 
-	if err := kb.Run(visibility); err != nil {
+	if err := kb.Run(); err != nil {
 		log.Fatalf("keyboard stopped: %v", err)
 	}
 }
