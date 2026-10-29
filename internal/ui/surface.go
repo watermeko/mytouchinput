@@ -78,18 +78,12 @@ func (u *UI) Run(visibility <-chan bool) (err error) {
 
 		// Keep a frame callback pending so Dispatch returns and the loop can
 		// notice visibility changes.
-		if os.Getenv("MYTOUCHINPUT_NO_DRAW") == "1" {
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-		if _, err := u.surface.Frame(); err != nil {
-			return err
-		}
-		if err := u.surface.Commit(); err != nil {
-			return err
-		}
-		if err := u.ctx.Dispatch(); err != nil {
-			return fmt.Errorf("dispatching: %w", err)
+		// Poll instead of chaining wl_surface.frame callbacks: the callback
+		// proxies are never destroyed, and re-requesting one every iteration
+		// killed the connection after a handful of frames.
+		time.Sleep(25 * time.Millisecond)
+		if err := u.roundtrip(); err != nil {
+			return fmt.Errorf("polling the compositor: %w", err)
 		}
 	}
 }
@@ -107,7 +101,12 @@ func (u *UI) ensureSurface() error {
 	}
 	u.xdgSurface = xdgSurface
 	xdgSurface.SetConfigureHandler(func(ev xdgshell.SurfaceConfigureEvent) {
-		xdgSurface.AckConfigure(ev.Serial)
+		u.configureSerial = ev.Serial
+		if err := ackConfigure(xdgSurface, ev.Serial); err != nil {
+			logf("ack_configure(%d): %v", ev.Serial, err)
+		} else {
+			logf("acked configure serial=%d", ev.Serial)
+		}
 		u.configured = true
 	})
 
@@ -116,23 +115,29 @@ func (u *UI) ensureSurface() error {
 		return err
 	}
 	u.toplevel = toplevel
+	logf("ids: surface=%d xdg_surface=%d toplevel=%d shm=%d comp=%d wm=%d seat=%d",
+		surface.ID(), xdgSurface.ID(), toplevel.ID(), u.shm.ID(), u.compositor.ID(), u.wmBase.ID(), u.seat.ID())
 	if err := setTitle(toplevel, u.cfg.Title); err != nil {
 		return err
 	}
 	if err := setAppID(toplevel, u.cfg.AppID); err != nil {
 		return err
 	}
-	toplevel.SetMinSize(int32(u.width), int32(u.height))
-	toplevel.SetMaxSize(int32(u.width), int32(u.height))
+	// No min/max size: pinning it fights the KWin window rule that docks the
+	// keyboard, and attaching a buffer that disagrees with the compositor's
+	// configure gets rejected.
 
 	logf("created surface + xdg_surface + toplevel")
-	if err := surface.Commit(); err != nil {
-		return err
-	}
-	// Wait for the initial configure before attaching a buffer.
-	for !u.configured {
-		if err := u.ctx.Dispatch(); err != nil {
-			return fmt.Errorf("waiting for configure: %w", err)
+	if os.Getenv("MYTOUCHINPUT_NO_WAIT") == "1" {
+		logf("skipping the pre-configure commit/wait")
+	} else {
+		if err := surface.Commit(); err != nil {
+			return err
+		}
+		for !u.configured {
+			if err := u.ctx.Dispatch(); err != nil {
+				return fmt.Errorf("waiting for configure: %w", err)
+			}
 		}
 	}
 
@@ -148,6 +153,30 @@ func (u *UI) ensureSurface() error {
 		return err
 	}
 	logf("buffers accepted by the compositor")
+
+	if os.Getenv("MYTOUCHINPUT_PROBE_ATTACH") == "1" {
+		probe, err := u.compositor.CreateSurface()
+		if err != nil {
+			return err
+		}
+		logf("probe surface id=%d", probe.ID())
+		if err := attachBuffer(probe, u.buffers[0], 0, 0); err != nil {
+			logf("probe attach: %v", err)
+			return err
+		}
+		logf("probe attach ok")
+		if err := probe.Commit(); err != nil {
+			logf("probe commit: %v", err)
+			return err
+		}
+		logf("probe commit ok")
+		if err := u.roundtrip(); err != nil {
+			logf("probe roundtrip: %v", err)
+			return err
+		}
+		logf("probe roundtrip ok -- shm attach works on a bare surface")
+		os.Exit(0)
+	}
 	u.dirty = true
 	return nil
 }

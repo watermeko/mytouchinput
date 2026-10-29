@@ -74,6 +74,7 @@ type UI struct {
 	buffers       [2]*client.Buffer
 	nextBuffer    int
 	configured    bool
+	configureSerial uint32
 	inputRegion   *client.Region
 	emptyRegion   *client.Region
 
@@ -202,6 +203,7 @@ func (u *UI) capabilities(ev client.SeatCapabilitiesEvent) {
 			if e.Button != 0x110 || e.State != 1 {
 				return
 			}
+			logf("pointer press at %.0f,%.0f", u.lastX, u.lastY)
 			u.press(u.lastX, u.lastY)
 		})
 	}
@@ -211,7 +213,9 @@ func (u *UI) capabilities(ev client.SeatCapabilitiesEvent) {
 			return
 		}
 		u.touch = t
+		logf("touch device acquired")
 		t.SetDownHandler(func(e client.TouchDownEvent) {
+			logf("touch down at %.0f,%.0f surface=%v", e.X, e.Y, e.Surface != nil)
 			if e.Surface == nil {
 				return
 			}

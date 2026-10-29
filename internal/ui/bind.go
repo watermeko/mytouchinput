@@ -129,3 +129,12 @@ func createBuffer(pool *client.ShmPool, offset, width, height, stride int32,
 	}
 	return buffer, nil
 }
+
+// ackConfigure sends xdg_surface.ack_configure (opcode 4).
+//
+// The library's version does not take effect: the compositor kept reporting
+// "attached a buffer before configure event" even after we acked.  Encoding it
+// here makes the ack real.
+func ackConfigure(xdgSurface *xdgshell.Surface, serial uint32) error {
+	return writeRequest(xdgSurface, 4, uintArg(serial))
+}
