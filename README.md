@@ -171,3 +171,29 @@ lost -- a sequence of taps delivers only the first one.
 So the remaining problem is the same one from the other direction: a window that
 is touch-receiving *and* never focused.  `acceptfocus=false` gives the second
 without the first, and activation gives the first without the second.
+
+
+## The missing piece: set_window_geometry
+
+KWin will not deliver touch events to a window whose rule sets
+`acceptfocus=false` -- unless the surface has announced its window geometry.
+GTK does that automatically, which is why the GTK prototype worked and this one
+did not.  `xdg_surface.set_window_geometry` had to be sent after the configure;
+after that both properties hold at once:
+
+* the rule keeps `acceptfocus=false`, so tapping never takes focus from the
+  field the keys must reach;
+* `ui: touch down` is logged for every tap, in sequence.
+
+Verified on the device: tapping `a` and `h` typed `ah` into a search field;
+tapping 中/英 moved fcitx5 to pinyin; tapping `n u h a o` brought up the
+candidate strip (`1. 怒号 2. 怒 ...`).
+
+## Known rough edges
+
+* The header and modifier keys show empty boxes: `goregular` has no glyphs for
+  the arrows or for 中/英.  A font with symbol and CJK coverage is needed.
+* `noborder` from the window rule did not take effect in the last runs, so the
+  window still shows a title bar.
+* Show/hide from fcitx5's ProcessVisibilityEvent has not been exercised yet;
+  testing used --always-visible.
