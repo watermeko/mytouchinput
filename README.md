@@ -146,3 +146,28 @@ Next steps that would settle it: run the same attach against a reference client
 (such as a minimal C or Python Wayland client) to see whether KWin accepts it,
 and if it does, replace the remaining request encoders the way
 `internal/ui/bind.go` already does for bind/title/app_id.
+
+
+## Touch delivery, as measured
+
+KWin will not deliver touch events to a window whose rule sets
+`acceptfocus=false`; dropping that key is what made taps arrive at all:
+
+```
+ui: touch down at 75,59 surface=true
+inject: key [16:1 16:0]
+```
+
+With the rest of the rule kept (`position`, `size`, `noborder`, `keepabove`,
+`skiptaskbar`) the window still docks at `0,526 1440x338` and taps land.
+
+The catch: touch only keeps arriving while the keyboard is the active window,
+and being active takes keyboard focus away from the text field the injected keys
+must reach.  `kwin-script/mytouchinput-dock` reactivates the previous window the
+moment the keyboard is activated (verified in the journal: "BOUNCE focus back to
+google-chrome"), but that makes the keyboard inactive again and the *next* tap is
+lost -- a sequence of taps delivers only the first one.
+
+So the remaining problem is the same one from the other direction: a window that
+is touch-receiving *and* never focused.  `acceptfocus=false` gives the second
+without the first, and activation gives the first without the second.

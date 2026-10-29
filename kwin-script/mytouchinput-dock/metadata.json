@@ -1,0 +1,14 @@
+{
+  "KPackageStructure": "KWin/Script",
+  "KPlugin": {
+    "Authors": [{"Name": "watermeko"}],
+    "Description": "Dock the touch keyboard and hand focus back to the application it types into",
+    "Id": "mytouchinput-dock",
+    "License": "MIT",
+    "Name": "mytouchinput dock",
+    "Version": "1.0",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API": "javascript",
+  "X-Plasma-MainScript": "code/main.js"
+}
