@@ -4,10 +4,11 @@ An on-screen keyboard for the Xiaomi Pad 6 Pro running Plasma Mobile, written in
 Go.  It appears when a text field wants input and disappears when it goes away,
 and it feeds Chinese through fcitx5.
 
-Status: **foundation only.**  `internal/layout`, `internal/inject` and
-`internal/fcitx` are complete and compile; the Wayland window and the rendering
-are still to be written.  Everything below was measured on the device, not
-assumed.
+Status: **window layer blocked.**  `internal/layout`, `internal/inject`,
+`internal/fcitx` and `internal/ui` are written and compile; the keyboard process
+runs, binds every global, creates its surface, toplevel and shm buffers (all
+accepted by KWin through a roundtrip), and then dies on the first
+`wl_surface.attach`.  Details in "Where it stops" below.
 
 ## The arrangement that works
 
@@ -98,3 +99,50 @@ window on demand and that is the whole point:
 Notes for whoever picks it up: `ydotoold` must be running
 (`/run/ydotoold.socket`), and `kwinrc [Wayland] InputMethod` must point at
 `fcitx5-wayland-launcher.desktop`.
+
+## Where it stops
+
+The keyboard reaches the point where the compositor has accepted everything and
+then `wl_surface.attach` tears the connection down:
+
+```
+ui: buffers accepted by the compositor      <- full roundtrip after create_pool/create_buffer
+ui: paint: visible=true boxes=33
+ui: attach buffer id=15
+ui: run failed: write unix @: sendmsg: broken pipe
+```
+
+KWin's journal says only `Data too big for buffer (1048576 + 12 > 1048576)` and
+`error in client communication`, which is a read-side failure rather than a
+protocol error, so the offending message is not identified.
+
+What was ruled out, each by bisecting with the `MYTOUCHINPUT_*` switches:
+
+* Not the pool or the buffers: a roundtrip after creating them succeeds and a
+  build that never attaches stays alive indefinitely.
+* Not the surface size: it fails identically at 400x200 and at 1440x338.
+* Not `set_input_region`, `damage` or `commit`: skipping them does not help, and
+  a build that sends all three but no attach survives.
+* Not the fd transfer or the pool alignment: re-encoding `create_pool` and
+  `create_buffer` by hand (with `UnixRights`, and with page-aligned pools)
+  changes nothing.
+* The attach request itself is canonical.  Dumped on the wire for surface 11,
+  buffer 15:
+
+  ```
+  0b 00 00 00  01 00 14 00  0f 00 00 00  00 00 00 00  00 00 00 00
+  ```
+
+  object=11, opcode=1, size=0x14, buffer=15, x=0, y=0.
+
+The same library also mis-encodes every request carrying a string (it declares
+the padded length instead of `len(s)+1`), which KWin rejects with "invalid
+arguments for <object>#<id>.<request>".  Those are already worked around in
+`internal/ui/bind.go`.  The remaining failure looks like the same class of bug --
+a request the compositor cannot parse -- but it is not one this repository has
+identified yet.
+
+Next steps that would settle it: run the same attach against a reference client
+(such as a minimal C or Python Wayland client) to see whether KWin accepts it,
+and if it does, replace the remaining request encoders the way
+`internal/ui/bind.go` already does for bind/title/app_id.
