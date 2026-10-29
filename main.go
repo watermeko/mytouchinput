@@ -28,6 +28,7 @@ func main() {
 		socket = flag.String("ydotool-socket", "/run/ydotoold.socket", "ydotoold socket")
 		dryRun = flag.Bool("dry-run", false, "log key events instead of injecting them")
 		always = flag.Bool("always-visible", false, "ignore fcitx5 and stay visible (debugging)")
+		poll   = flag.Duration("focus-poll", 300*time.Millisecond, "how often to ask fcitx5 whether a text field has focus")
 	)
 	flag.Parse()
 
@@ -35,6 +36,20 @@ func main() {
 	if *always {
 		visibility <- true
 	} else {
+		// fcitx5 knows about this keyboard but never calls
+		// ProcessVisibilityEvent on focus, so poll its idea of the focused
+		// input context instead: fcitx5-remote -n prints the engine name while
+		// a text field has focus and nothing otherwise.
+		go func() {
+			last := false
+			for range time.Tick(*poll) {
+				now := currentIME() != ""
+				if now != last {
+					last = now
+					visibility <- now
+				}
+			}
+		}()
 		conn, err := fcitx.Connect()
 		if err != nil {
 			log.Fatalf("cannot reach the session bus: %v", err)
