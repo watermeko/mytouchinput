@@ -108,6 +108,11 @@ func (u *UI) ensureSurface() error {
 			logf("acked configure serial=%d", ev.Serial)
 		}
 		u.configured = true
+		if err := setWindowGeometry(xdgSurface, 0, 0, int32(u.width), int32(u.height)); err != nil {
+			logf("set_window_geometry: %v", err)
+		} else {
+			logf("set window geometry %dx%d", u.width, u.height)
+		}
 	})
 
 	toplevel, err := xdgSurface.GetToplevel()

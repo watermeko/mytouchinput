@@ -138,3 +138,15 @@ func createBuffer(pool *client.ShmPool, offset, width, height, stride int32,
 func ackConfigure(xdgSurface *xdgshell.Surface, serial uint32) error {
 	return writeRequest(xdgSurface, 4, uintArg(serial))
 }
+
+// setWindowGeometry sends xdg_surface.set_window_geometry (opcode 3).
+//
+// GTK calls this and its windows receive touch even with acceptfocus=false;
+// ours did not until this was added, which points at KWin deriving the input
+// area from the window geometry.
+func setWindowGeometry(xdgSurface *xdgshell.Surface, x, y, w, h int32) error {
+	payload := append(uintArg(uint32(x)), uintArg(uint32(y))...)
+	payload = append(payload, uintArg(uint32(w))...)
+	payload = append(payload, uintArg(uint32(h))...)
+	return writeRequest(xdgSurface, 3, payload)
+}
