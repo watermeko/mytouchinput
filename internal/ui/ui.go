@@ -224,8 +224,16 @@ func (u *UI) capabilities(ev client.SeatCapabilitiesEvent) {
 	}
 }
 
+// systemFont is preferred over the embedded Go font: goregular has no glyphs
+// for ⇧ ⌫ ⏎, which rendered as empty boxes.
+const systemFont = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
 func newFace(size float64) (font.Face, error) {
-	parsed, err := opentype.Parse(goregular.TTF)
+	data := goregular.TTF
+	if b, err := os.ReadFile(systemFont); err == nil {
+		data = b
+	}
+	parsed, err := opentype.Parse(data)
 	if err != nil {
 		return nil, err
 	}

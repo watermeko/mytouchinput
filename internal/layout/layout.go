@@ -60,7 +60,7 @@ var Qwerty = []Row{
 	},
 	{
 		{Label: "?123", Act: ShowSymbols, Width: 2},
-		{Label: "中/英", Act: ToggleIME, Width: 3},
+		{Label: "IME", Act: ToggleIME, Width: 3},
 		{Label: "", Code: 57, Width: 7},
 		{Label: ".", Code: 52, Width: 2},
 		{Label: "⏎", Code: 28, Width: 2},
@@ -92,7 +92,7 @@ var Symbols = []Row{
 	},
 	{
 		{Label: "abc", Act: ShowLetters, Width: 2},
-		{Label: "中/英", Act: ToggleIME, Width: 3},
+		{Label: "IME", Act: ToggleIME, Width: 3},
 		{Label: "", Code: 57, Width: 7},
 		{Label: "+", Code: 13, Shift: true, Width: 2},
 		{Label: "⏎", Code: 28, Width: 2},

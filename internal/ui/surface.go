@@ -314,7 +314,7 @@ func (u *UI) drawKeyboard(img *image.RGBA) {
 		image.Point{}, draw.Src)
 	label := "EN"
 	if u.symbolsIME {
-		label = "中文 · pinyin"
+		label = "CN · pinyin"
 	}
 	u.text(img, label, 12, 21, colTextDim)
 

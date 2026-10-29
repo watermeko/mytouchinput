@@ -191,9 +191,12 @@ candidate strip (`1. 怒号 2. 怒 ...`).
 
 ## Known rough edges
 
-* The header and modifier keys show empty boxes: `goregular` has no glyphs for
-  the arrows or for 中/英.  A font with symbol and CJK coverage is needed.
+* Glyphs: the embedded Go font has no ⇧ ⌫ ⏎, which rendered as empty boxes.
+  The keyboard now loads DejaVuSans from the system when present, so the
+  modifier keys read properly, and the labels avoid Han characters.
 * `noborder` from the window rule did not take effect in the last runs, so the
   window still shows a title bar.
 * Show/hide from fcitx5's ProcessVisibilityEvent has not been exercised yet;
-  testing used --always-visible.
+  testing used --always-visible.  Wiring this up (and autostart) is what is left
+  before it can replace the GTK prototype that is currently the active
+  keyboard on the device.
