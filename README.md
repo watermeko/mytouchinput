@@ -196,7 +196,10 @@ candidate strip (`1. 怒号 2. 怒 ...`).
   modifier keys read properly, and the labels avoid Han characters.
 * `noborder` from the window rule did not take effect in the last runs, so the
   window still shows a title bar.
-* Show/hide from fcitx5's ProcessVisibilityEvent has not been exercised yet;
-  testing used --always-visible.  Wiring this up (and autostart) is what is left
-  before it can replace the GTK prototype that is currently the active
-  keyboard on the device.
+* Show/hide: fcitx5 does notice the keyboard -- its journal prints
+  "VirtualKeyboard new owner: :1.287" once we claim
+  `org.fcitx.Fcitx5.VirtualKeyboard` as well as the backend name -- but it never
+  calls ProcessVisibilityEvent when a text field gains focus, so the keyboard
+  stays hidden.  Testing therefore uses --always-visible.
+* Autostart is not wired up; the GTK prototype is still the active keyboard on
+  the device.

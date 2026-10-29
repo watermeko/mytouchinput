@@ -18,8 +18,11 @@ import (
 )
 
 const (
-	// BusName is the name fcitx5 looks for.
+	// BusName is what our keyboard claims; fcitx5 calls the backend object on it.
 	BusName = "org.fcitx.Fcitx5.VirtualKeyboardBackend"
+	// WatchedName is the name fcitx5 watches -- its journal prints
+	// "VirtualKeyboard new owner: <owner>" only when this one appears.
+	WatchedName = "org.fcitx.Fcitx5.VirtualKeyboard"
 	// ObjectPath is where it expects the backend object.
 	ObjectPath = dbus.ObjectPath("/org/fcitx/virtualkeyboard/impanel")
 	// Interface is the backend interface.
@@ -80,6 +83,11 @@ func (b *Backend) SetVirtualKeyboardFunctionMode(mode int32) *dbus.Error { retur
 
 // Serve claims the bus name and exports the backend object.
 func Serve(conn *dbus.Conn, b *Backend) error {
+	if reply, err := conn.RequestName(WatchedName, dbus.NameFlagDoNotQueue); err != nil {
+		return fmt.Errorf("requesting %s: %w", WatchedName, err)
+	} else if reply != dbus.RequestNameReplyPrimaryOwner {
+		return fmt.Errorf("%s already owned (reply %d)", WatchedName, reply)
+	}
 	reply, err := conn.RequestName(BusName, dbus.NameFlagDoNotQueue)
 	if err != nil {
 		return fmt.Errorf("requesting %s: %w", BusName, err)
